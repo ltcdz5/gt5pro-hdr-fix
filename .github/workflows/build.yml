@@ -1,0 +1,128 @@
+name: Build & Release
+
+on:
+  push:
+    branches: [ main ]
+    tags: [ 'v*' ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Read module version
+        id: ver
+        run: |
+          VERSION=$(sed -n 's/^version=//p' module/module.prop | head -1)
+          VERCODE=$(sed -n 's/^versionCode=//p' module/module.prop | head -1)
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "vercode=$VERCODE" >> "$GITHUB_OUTPUT"
+          echo "模块版本: $VERSION ($VERCODE)"
+
+      - name: Normalize line endings
+        run: |
+          find module -type f \( -name '*.sh' -o -name '*.prop' -o -name '*.md' \) -exec sed -i 's/\r$//' {} +
+          chmod 755 module/post-fs-data.sh
+
+      - name: Syntax check
+        run: |
+          sh -n module/post-fs-data.sh
+          echo "shell ok"
+
+      - name: Verify module payload
+        run: |
+          test -f module/sidecar42.ko || { echo 'missing sidecar42.ko'; exit 1; }
+          test -f module/ghdr_lut.bin || { echo 'missing ghdr_lut.bin'; exit 1; }
+          echo "ghdr_lut.bin: $(stat -c%s module/ghdr_lut.bin) bytes"
+          test "$(stat -c%s module/ghdr_lut.bin)" = "39536" || { echo 'bad lut size'; exit 1; }
+
+      - name: Sync update.json
+        run: |
+          python3 - <<'PY'
+          import json, os
+          v = os.environ['V']
+          c = int(os.environ['C'])
+          repo = os.environ['GITHUB_REPOSITORY']
+          tag = 'v' + v.lstrip('v')
+          d = {
+              "version": v,
+              "versionCode": c,
+              "zipUrl": f"https://github.com/{repo}/releases/download/{tag}/gt5pro-hdr-fix-{v}.zip",
+              "changelog": f"https://raw.githubusercontent.com/{repo}/main/CHANGELOG.md"
+          }
+          with open('update.json','w') as f:
+              json.dump(d, f, indent=2, ensure_ascii=False)
+              f.write('\n')
+          print(json.dumps(d, indent=2, ensure_ascii=False))
+          PY
+        env:
+          V: ${{ steps.ver.outputs.version }}
+          C: ${{ steps.ver.outputs.vercode }}
+
+      - name: Commit update.json if changed
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: |
+          if ! git diff --quiet update.json; then
+            git config user.name 'github-actions[bot]'
+            git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+            git add update.json
+            git commit -m "chore: 同步 update.json 到 ${{ steps.ver.outputs.version }}"
+            git push
+          else
+            echo 'update.json 无变化'
+          fi
+
+      - name: Extract changelog for release
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          python3 - <<'PY'
+          import re, os
+          v = os.environ['V']
+          body = ''
+          try:
+              txt = open('CHANGELOG.md', encoding='utf-8').read()
+              pat = re.compile(r'^##\s+' + re.escape(v) + r'\b.*?(?=^##\s+v|\Z)', re.S | re.M)
+              m = pat.search(txt)
+              if m:
+                  body = re.sub(r'^##\s+\S.*?\n', '', m.group(0).strip(), count=1).strip()
+          except FileNotFoundError:
+              pass
+          if not body:
+              body = f'版本 {v}'
+          body += '\n\n---\n\n**安装**：下载下方 zip，在 KernelSU 管理器中刷入，重启。\n'
+          open('release_notes.md','w',encoding='utf-8').write(body)
+          print(body[:600])
+          PY
+        env:
+          V: ${{ steps.ver.outputs.version }}
+
+      - name: Build module zip
+        run: |
+          cd module
+          zip -r "../gt5pro-hdr-fix-${{ steps.ver.outputs.version }}.zip" . -x '*.bak*' -x '*.git*' -x '*.zip' -x 'README.md'
+          cd ..
+          ls -lh gt5pro-hdr-fix-*.zip
+          unzip -l gt5pro-hdr-fix-*.zip
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: gt5pro-hdr-fix-${{ steps.ver.outputs.version }}
+          path: gt5pro-hdr-fix-*.zip
+          if-no-files-found: error
+
+      - name: Create Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: gt5pro-hdr-fix-*.zip
+          body_path: release_notes.md
+          generate_release_notes: false

@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: 原理说明
+    url: https://github.com/ltcdz5/gt5pro-hdr-fix/blob/main/module/README.md
+    about: 拦截机制、表编码、调参方法
