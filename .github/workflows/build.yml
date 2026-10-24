@@ -39,10 +39,13 @@ jobs:
 
       - name: Verify module payload
         run: |
-          test -f module/sidecar42.ko || { echo 'missing sidecar42.ko'; exit 1; }
-          test -f module/ghdr_lut.bin || { echo 'missing ghdr_lut.bin'; exit 1; }
-          echo "ghdr_lut.bin: $(stat -c%s module/ghdr_lut.bin) bytes"
-          test "$(stat -c%s module/ghdr_lut.bin)" = "39536" || { echo 'bad lut size'; exit 1; }
+          test -f module/sidecar55.ko || { echo 'missing sidecar55.ko'; exit 1; }
+          for f in module/ghdr_lut.bin module/ghdr_port.bin; do
+            test -f "$f" || { echo "missing $f"; exit 1; }
+            sz=$(stat -c%s "$f")
+            echo "$f: $sz bytes"
+            test "$sz" = "39536" || { echo "bad lut size: $f"; exit 1; }
+          done
 
       - name: Sync update.json
         run: |
