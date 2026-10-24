@@ -39,7 +39,7 @@ jobs:
 
       - name: Verify module payload
         run: |
-          test -f module/sidecar55.ko || { echo 'missing sidecar55.ko'; exit 1; }
+          test -f module/sidecar56.ko || { echo 'missing sidecar56.ko'; exit 1; }
           for f in module/ghdr_lut.bin module/ghdr_port.bin; do
             test -f "$f" || { echo "missing $f"; exit 1; }
             sz=$(stat -c%s "$f")
