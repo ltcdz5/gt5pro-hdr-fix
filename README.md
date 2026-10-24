@@ -47,8 +47,8 @@
 验证：
 
 ```bash
-su -c 'lsmod | grep sidecar55'
-su -c 'dmesg | grep sidecar55'      # 应看到 rc=0
+su -c 'lsmod | grep sidecar56'
+su -c 'dmesg | grep sidecar56'      # 应看到 rc=0
 su -c 'cat /proc/sdehdrstat'        # 查看命中统计
 ```
 
@@ -58,11 +58,11 @@ su -c 'cat /proc/sdehdrstat'        # 查看命中统计
 
 ```bash
 # 临时停用（本次开机有效）
-su -c 'echo 0 > /sys/module/sidecar55/parameters/enable'
-su -c 'rmmod sidecar55'
+su -c 'echo 0 > /sys/module/sidecar56/parameters/enable'
+su -c 'rmmod sidecar56'
 
 # 彻底卸载
-su -c 'rmmod sidecar55; rm -rf /data/adb/modules/hdrfix'
+su -c 'rmmod sidecar56; rm -rf /data/adb/modules/hdrfix'
 ```
 
 ---
