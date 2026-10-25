@@ -111,6 +111,25 @@ python3 tools/gain5.py 0.70 -0.11 0.755 -0.135 1.03 -0.28 out.bin
 python3 tools/gain_port.py 112 base_portrait.bin out.bin
 ```
 
+## 调参 WebUI
+
+在 KernelSU 管理器里点模块的「打开」即可进入。三个滑块直接对应 R/G/B 增益：
+
+| 控件 | 范围 | 作用 |
+|---|---|---|
+| 红 R | 70%–110% | 画面偏红偏黄就减，偏青就加 |
+| 绿 G | 70%–110% | 偏绿就减，偏紫就加 |
+| 蓝 B | 70%–170% | HDR 发黄主要靠它：偏黄就加，偏紫就减 |
+
+点「应用」后立即生效，参数存到 `/data/adb/hdrfix.conf`，生成的表存到
+`/data/adb/hdrfix/land_custom.bin`，`post-fs-data.sh` 会在开机时自动加载。
+
+实现方式：页面里的 JS 读入 `base_land.bin`（原厂横屏表），按增益重算 17³ = 4913 个格点，
+再分块 base64 传到设备解码写入 `/proc/sdehdrlut_land`。设备端不做二进制运算。
+
+**经验值**：蓝 130–140% 能明显改善发黄；超过 145% 灰阶会发紫。白点处 B 已接近满量程，
+再想更蓝只能减 R（会略降亮度）。
+
 ## 调试接口
 
 ```bash

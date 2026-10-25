@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#f1faff">
+<title>HDR 校正</title>
+<style>
+:root{--bg:#f1faff;--surf:#fff;--surf2:#e6f1f8;--on:#121c22;--on2:#4a5c66;
+  --pri:#00658f;--outline:#c3d6e0;--r:#e5484d;--g:#30a46c;--b:#0091ff}
+[data-theme="dark"]{--bg:#0d1418;--surf:#151e24;--surf2:#1d2830;--on:#dfe8ee;
+  --on2:#a5b6c0;--pri:#7fd0ff;--outline:#33454f}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+body{margin:0;background:var(--bg);color:var(--on);
+  font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  padding:calc(16px + var(--window-inset-top,0px)) 16px calc(28px + var(--window-inset-bottom,0px))}
+h1{font-size:20px;margin:0 0 4px;font-weight:600}
+.sub{font-size:13px;color:var(--on2);margin-bottom:16px;line-height:1.55}
+.card{background:var(--surf);border-radius:18px;padding:16px;margin-bottom:13px;
+  box-shadow:0 1px 3px rgba(0,0,0,.06)}
+.row{display:flex;align-items:center;justify-content:space-between}
+.t{font-size:15px;font-weight:500;display:flex;align-items:center;gap:8px}
+.dot{width:10px;height:10px;border-radius:50%}
+.v{font-size:16px;font-weight:700;font-variant-numeric:tabular-nums}
+.s{font-size:12px;color:var(--on2);margin-top:3px;line-height:1.5}
+input[type=range]{width:100%;margin:12px 0 2px;height:30px;background:transparent}
+input[type=range]::-webkit-slider-runnable-track{height:6px;border-radius:3px;background:var(--surf2)}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:22px;height:22px;
+  border-radius:50%;background:var(--pri);margin-top:-8px;box-shadow:0 1px 4px rgba(0,0,0,.25)}
+.btns{display:flex;gap:10px;margin-top:8px}
+button{flex:1;border:none;border-radius:14px;padding:13px;font-size:15px;font-weight:600;
+  background:var(--pri);color:#fff;cursor:pointer}
+button.ghost{background:var(--surf2);color:var(--on)}
+button:disabled{opacity:.5}
+.mono{font-size:12px;color:var(--on2);font-family:ui-monospace,monospace;word-break:break-all;line-height:1.65}
+.pill{padding:3px 11px;border-radius:999px;font-size:12px;background:var(--surf2);color:var(--on2)}
+.pill.on{background:var(--pri);color:#fff}
+#msg{position:fixed;left:50%;bottom:86px;transform:translateX(-50%);background:var(--on);
+  color:var(--surf);padding:11px 18px;border-radius:12px;font-size:13px;opacity:0;
+  transition:.3s;pointer-events:none;max-width:86vw;text-align:center;z-index:99}
+</style>
+</head>
+<body>
+<h1>HDR 横屏校正</h1>
+<div class="sub">拖动 RGB 增减，点「应用」立即生效并保存，重启后自动恢复。</div>
+
+<div class="card">
+  <div class="row"><div class="t"><span class="dot" style="background:var(--r)"></span>红 R</div><div class="v" id="vR" style="color:var(--r)">100%</div></div>
+  <div class="s">画面偏红/偏黄就减，偏青就加</div>
+  <input type="range" id="rgain" min="70" max="110" step="1" value="100">
+</div>
+
+<div class="card">
+  <div class="row"><div class="t"><span class="dot" style="background:var(--g)"></span>绿 G</div><div class="v" id="vG" style="color:var(--g)">100%</div></div>
+  <div class="s">偏绿就减，偏紫就加</div>
+  <input type="range" id="ggain" min="70" max="110" step="1" value="100">
+</div>
+
+<div class="card">
+  <div class="row"><div class="t"><span class="dot" style="background:var(--b)"></span>蓝 B</div><div class="v" id="vB" style="color:var(--b)">130%</div></div>
+  <div class="s">HDR 发黄主要靠这个：偏黄就加，偏紫就减</div>
+  <input type="range" id="bgain" min="70" max="170" step="1" value="130">
+</div>
+
+<div class="card">
+  <div class="row"><div class="t">预估白点</div><div class="mono" id="wp">—</div></div>
+  <div class="s">按当前增益算出的白点比例，供参考</div>
+</div>
+
+<div class="card">
+  <div class="row">
+    <div><div class="t">启用校正</div><div class="s">关闭后完全走原厂表</div></div>
+    <div class="pill" id="enPill">--</div>
+  </div>
+  <div class="btns">
+    <button id="btnApply">应用</button>
+    <button class="ghost" id="btnReset">重置</button>
+  </div>
+</div>
+
+<div class="card">
+  <div class="row"><div class="t">运行状态</div><div class="v" id="hit" style="font-size:13px">—</div></div>
+  <div class="mono" id="stats">读取中…</div>
+</div>
+
+<div id="msg"></div>
+<script>
+var MODDIR = "/data/adb/modules/hdrfix";
+var BASE_URL = MODDIR + "/base_land.bin";
+var baseBytes = null, baseWhite = null, baseGray = null;
+
+function getKsu(){
+  if (typeof window.ksu !== "undefined" && window.ksu && window.ksu.exec) return window.ksu;
+  if (typeof ksu !== "undefined" && ksu && ksu.exec) return ksu;
+  if (typeof KernelSU !== "undefined" && KernelSU && KernelSU.exec) return KernelSU;
+  return null;
+}
+function SH(cmd){
+  return new Promise(function(ok){
+    var k = getKsu();
+    if(!k){ ok({errno:-1,stdout:"",stderr:"no ksu api"}); return; }
+    var cb = "__cb" + Date.now() + Math.floor(Math.random()*1e5);
+    window[cb] = function(errno, stdout, stderr){
+      try{ delete window[cb]; }catch(e){}
+      ok({errno:errno, stdout:(stdout||""), stderr:(stderr||"")});
+    };
+    try{ k.exec(cmd, "window." + cb); }
+    catch(e){ try{ delete window[cb]; }catch(x){} ok({errno:-1,stdout:"",stderr:String(e)}); }
+  });
+}
+function TOAST(m){
+  var t = document.getElementById("msg");
+  t.textContent = m; t.style.opacity = "1";
+  clearTimeout(window._tt);
+  window._tt = setTimeout(function(){ t.style.opacity = "0"; }, 2200);
+}
+function b64dec(s){
+  var bin = atob(s), u = new Uint8Array(bin.length);
+  for (var i=0;i<bin.length;i++) u[i] = bin.charCodeAt(i);
+  return u;
+}
+function b64enc(u){
+  var s = "", CH = 0x2000;
+  for (var i=0;i<u.length;i+=CH) s += String.fromCharCode.apply(null, u.subarray(i, i+CH));
+  return btoa(s);
+}
+var COL_OFF = 204, ROW = 1229, GRID3 = 4913;
+function rdEntry(d, n){
+  var view = new DataView(d.buffer, d.byteOffset, d.byteLength);
+  var o = COL_OFF + Math.floor(n/4)*8 + (n%4)*ROW*8;
+  var c2c1 = view.getUint32(o, true), c0 = view.getUint32(o+4, true);
+  return { R: c0, G: (c2c1 >>> 16) & 0xfff, B: c2c1 & 0xfff };
+}
+function buildTable(src, gr, gg, gb){
+  var d = new Uint8Array(src);
+  var view = new DataView(d.buffer);
+  for (var n=0;n<GRID3;n++){
+    var o = COL_OFF + Math.floor(n/4)*8 + (n%4)*ROW*8;
+    var c2c1 = view.getUint32(o, true), c0 = view.getUint32(o+4, true);
+    var R = c0, B = c2c1 & 0xfff, G = (c2c1 >>> 16) & 0xfff;
+    R = Math.min(4095, Math.round(R * gr));
+    G = Math.min(4095, Math.round(G * gg));
+    B = Math.min(4095, Math.round(B * gb));
+    view.setUint32(o, ((G << 16) | B) >>> 0, true);
+    view.setUint32(o+4, R, true);
+  }
+  return d;
+}
+function readUI(){
+  return {
+    r: parseInt(document.getElementById("rgain").value,10)/100,
+    g: parseInt(document.getElementById("ggain").value,10)/100,
+    b: parseInt(document.getElementById("bgain").value,10)/100
+  };
+}
+function pct(v){ return Math.round(v*100) + "%"; }
+function syncLabels(){
+  var p = readUI();
+  document.getElementById("vR").textContent = pct(p.r);
+  document.getElementById("vG").textContent = pct(p.g);
+  document.getElementById("vB").textContent = pct(p.b);
+  if (baseWhite){
+    var w = { R: Math.min(4095, Math.round(baseWhite.R*p.r)),
+              G: Math.min(4095, Math.round(baseWhite.G*p.g)),
+              B: Math.min(4095, Math.round(baseWhite.B*p.b)) };
+    document.getElementById("wp").textContent =
+      "B/R " + (w.B/w.R).toFixed(3) + "  R/G " + (w.R/w.G).toFixed(3);
+  }
+}
+async function loadState(){
+  var r = await SH("sh " + MODDIR + "/webctl.sh json");
+  try{
+    var j = JSON.parse(r.stdout.trim());
+    document.getElementById("rgain").value = Math.round(parseFloat(j.rgain)*100);
+    document.getElementById("ggain").value = Math.round(parseFloat(j.ggain)*100);
+    document.getElementById("bgain").value = Math.round(parseFloat(j.bgain)*100);
+    var pill = document.getElementById("enPill");
+    pill.textContent = (j.enable === "1") ? "已启用" : "已停用";
+    pill.className = "pill" + (j.enable === "1" ? " on" : "");
+    document.getElementById("stats").textContent = j.stats || "—";
+    var m = (j.stats||"").match(/land=(\d+)/);
+    document.getElementById("hit").textContent = m ? ("横屏命中 " + m[1]) : "—";
+  }catch(e){ TOAST("读取失败"); }
+  syncLabels();
+}
+async function loadBase(){
+  if (baseBytes) return baseBytes;
+  var r = await SH("base64 -w0 " + BASE_URL);
+  if (r.errno !== 0 || !r.stdout){ TOAST("读取基准表失败"); return null; }
+  baseBytes = b64dec(r.stdout.replace(/\s/g,""));
+  baseWhite = rdEntry(baseBytes, 16*289+16*17+16);
+  baseGray  = rdEntry(baseBytes, 8*289+8*17+8);
+  return baseBytes;
+}
+async function apply(){
+  var btn = document.getElementById("btnApply");
+  btn.disabled = true;
+  try{
+    var src = await loadBase(); if(!src) return;
+    var p = readUI();
+    var out = buildTable(src, p.r, p.g, p.b);
+    var b64 = b64enc(out);
+    await SH("sh " + MODDIR + "/webctl.sh begin");
+    var CH = 8000;
+    for (var i=0;i<b64.length;i+=CH){
+      var rr = await SH("sh " + MODDIR + "/webctl.sh chunk '" + b64.slice(i, i+CH) + "'");
+      if (rr.errno !== 0){ TOAST("写入中断"); return; }
+    }
+    var c = await SH("sh " + MODDIR + "/webctl.sh commit");
+    if ((c.stdout||"").trim() !== "ok"){ TOAST("提交失败: " + (c.stdout||"").trim()); return; }
+    await SH("sh " + MODDIR + "/webctl.sh save " + p.r.toFixed(2) + " " + p.g.toFixed(2) + " " + p.b.toFixed(2));
+    await SH("sh " + MODDIR + "/webctl.sh enable 1");
+    TOAST("已应用");
+    await loadState();
+  } finally { btn.disabled = false; }
+}
+async function reset(){
+  await SH("sh " + MODDIR + "/webctl.sh reset");
+  TOAST("已重置为原厂");
+  await loadState();
+}
+document.getElementById("rgain").addEventListener("input", syncLabels);
+document.getElementById("ggain").addEventListener("input", syncLabels);
+document.getElementById("bgain").addEventListener("input", syncLabels);
+document.getElementById("btnApply").addEventListener("click", apply);
+document.getElementById("btnReset").addEventListener("click", reset);
+(function init(){
+  try{
+    var t = localStorage.getItem("hdrfix_theme");
+    if(!t) t = (window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches) ? "dark" : "light";
+    document.documentElement.setAttribute("data-theme", t);
+  }catch(e){}
+  loadBase().then(loadState);
+})();
+</script>
+</body>
+</html>

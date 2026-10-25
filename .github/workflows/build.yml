@@ -35,12 +35,14 @@ jobs:
       - name: Syntax check
         run: |
           sh -n module/post-fs-data.sh
+          test -f module/webroot/index.html || { echo 'missing webui'; exit 1; }
+          sh -n module/webctl.sh
           echo "shell ok"
 
       - name: Verify module payload
         run: |
           test -f module/sidecar56.ko || { echo 'missing sidecar56.ko'; exit 1; }
-          for f in module/ghdr_lut.bin module/ghdr_port.bin; do
+          for f in module/ghdr_lut.bin module/ghdr_port.bin module/base_land.bin; do
             test -f "$f" || { echo "missing $f"; exit 1; }
             sz=$(stat -c%s "$f")
             echo "$f: $sz bytes"
