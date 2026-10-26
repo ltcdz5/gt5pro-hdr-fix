@@ -50,6 +50,8 @@ jobs:
           done
 
       - name: Sync update.json
+        # 预发布版本（-test/-beta/-rc）不同步，避免推给正式用户
+        if: ${{ !contains(steps.ver.outputs.version, '-') }}
         run: |
           python3 - <<'PY'
           import json, os
@@ -73,7 +75,7 @@ jobs:
           C: ${{ steps.ver.outputs.vercode }}
 
       - name: Commit update.json if changed
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && !contains(steps.ver.outputs.version, '-')
         run: |
           if ! git diff --quiet update.json; then
             git config user.name 'github-actions[bot]'
