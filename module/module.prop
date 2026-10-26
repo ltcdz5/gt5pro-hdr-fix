@@ -1,7 +1,6 @@
 id=hdrfix
-name=GT5 Pro HDR Fix
-version=v1.2
-versionCode=3
+name=GT5Pro HDR 增强（测试版）
+version=v2.0-test
+versionCode=40
 author=ltcdz5
-description=修复 realme GT5 Pro 播放 HDR 视频偏黄（横屏/竖屏均支持）。仅对 HDR 生效，SDR 与分区均不受影响。
-updateJson=https://raw.githubusercontent.com/ltcdz5/gt5pro-hdr-fix/main/update.json
+description=测试版：HDR 亮度激发（factor 19，横屏生效）+ 3D LUT 色彩校准。WebUI 支持「我的预设 / 作者校准 / 原厂」三种状态。仅对 HDR 生效。
